@@ -10,10 +10,14 @@ import Foundation
 
 class OddsAPIService {
     static let shared = OddsAPIService()
-    
-    private let apiKey = "YOUR_ODDS_API_KEY" // Get from the-odds-api.com
+
+    private let apiKey = "YOUR_ODDS_API_KEY" // TODO: Replace with your API key from the-odds-api.com
     private let baseURL = "https://api.the-odds-api.com/v4"
     private let session = URLSession.shared
+
+    // Track API usage
+    private(set) var requestsRemaining: Int?
+    private(set) var requestsUsed: Int?
     
     struct APIGame: Codable {
         let id: String
@@ -41,6 +45,9 @@ class OddsAPIService {
         let price: Double
     }
     
+    /// Fetches NFL games with odds from The Odds API
+    /// WARNING: This counts against your API quota. Use caching in GamesViewModel.
+    /// Target: <500 API calls/month (see GamesViewModel for caching logic)
     func fetchNFLGames() async throws -> [APIGame] {
         // #region agent log
         let logData1: [String: Any] = [
@@ -103,11 +110,23 @@ class OddsAPIService {
             throw URLError(.badServerResponse)
         }
         
-        // Check remaining requests header
-        if let remaining = httpResponse.value(forHTTPHeaderField: "x-requests-remaining") {
-            print("API Requests remaining: \(remaining)")
+        // Track API usage from response headers
+        if let remaining = httpResponse.value(forHTTPHeaderField: "x-requests-remaining"),
+           let remainingInt = Int(remaining) {
+            requestsRemaining = remainingInt
+            print("📊 API Requests remaining: \(remaining)")
         }
-        
+
+        if let used = httpResponse.value(forHTTPHeaderField: "x-requests-used"),
+           let usedInt = Int(used) {
+            requestsUsed = usedInt
+            print("📊 API Requests used: \(used)")
+        }
+
+        if let lastCost = httpResponse.value(forHTTPHeaderField: "x-requests-last") {
+            print("📊 Last request cost: \(lastCost)")
+        }
+
         return try JSONDecoder().decode([APIGame].self, from: data)
     }
     

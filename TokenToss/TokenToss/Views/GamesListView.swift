@@ -17,13 +17,32 @@ struct GamesListView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 0) {
-                    // Last updated
-                    HStack {
-                        Image(systemName: "clock")
-                            .font(.caption)
-                        Text("Updated: \(viewModel.lastUpdated, style: .relative)")
-                            .font(.caption)
-                        Spacer()
+                    // Last updated & cache status
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Image(systemName: "clock")
+                                .font(.caption)
+                            Text("Updated: \(viewModel.lastUpdated, style: .relative)")
+                                .font(.caption)
+                            Spacer()
+                        }
+                        if let lastApiCall = viewModel.lastApiCall {
+                            HStack {
+                                Image(systemName: "network")
+                                    .font(.caption)
+                                Text("API called: \(lastApiCall, style: .relative)")
+                                    .font(.caption)
+                                Spacer()
+                            }
+                        } else {
+                            HStack {
+                                Image(systemName: "network")
+                                    .font(.caption)
+                                Text("Using cached data")
+                                    .font(.caption)
+                                Spacer()
+                            }
+                        }
                     }
                     .foregroundColor(.secondary)
                     .padding(.horizontal)

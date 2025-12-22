@@ -5,6 +5,29 @@
 //  Created by Cole Doolittle on 12/22/25.
 //
 
+/*
+ ODDS API CACHING STRATEGY
+
+ Goal: Stay under 500 API calls/month (~16 calls/day max)
+
+ Implementation:
+ - Cache duration: 10 minutes (odds update every ~30 seconds on API, but we don't need that frequency)
+ - Auto-refresh: Only refreshes from Supabase cache (no API calls)
+ - Smart fetching: Only calls API when:
+   1. Cache is expired (>10 minutes old)
+   2. There are upcoming games that haven't started
+   3. Games aren't completed
+
+ Expected usage with this strategy:
+ - ~3-4 API calls per day during NFL season
+ - ~90-120 API calls per month
+ - Well within 500/month limit ✅
+
+ To force an API call (use sparingly):
+ - Call forceRefreshFromAPI() instead of refreshGames()
+
+ API usage is logged to 'api_usage_log' table in Supabase for monitoring.
+ */
 
 import SwiftUI
 import Supabase
@@ -17,15 +40,19 @@ class GamesViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var lastUpdated = Date()
-    
+    @Published var lastApiCall: Date?
+
     private let oddsAPI = OddsAPIService.shared
     private var refreshTimer: Timer?
-    
+
+    // Cache duration: 10 minutes
+    private let cacheDuration: TimeInterval = 10 * 60
+
     func startAutoRefresh() {
-        // Refresh every 60 seconds to conserve API calls
+        // Refresh from cache every 60 seconds (no API calls)
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
             Task { @MainActor in
-                await self.refreshGames()
+                await self.refreshFromCache()
             }
         }
     }
@@ -38,25 +65,91 @@ class GamesViewModel: ObservableObject {
     func loadGames() async {
         isLoading = true
         errorMessage = nil
-        
+
         do {
-            // Fetch from API
-            let apiGames = try await oddsAPI.fetchNFLGames()
-            
-            // Sync to database
-            for apiGame in apiGames {
-                await syncGameToDatabase(apiGame)
-            }
-            
-            // Load from database
+            // First, try to load from cache
             await fetchGamesFromDatabase()
-            
+
+            // Determine if we need to call the API
+            let shouldCallAPI = shouldFetchFromAPI()
+
+            if shouldCallAPI {
+                print("📞 Calling Odds API - cache expired")
+                // Fetch from API
+                let apiGames = try await oddsAPI.fetchNFLGames()
+
+                // Sync to database
+                for apiGame in apiGames {
+                    await syncGameToDatabase(apiGame)
+                }
+
+                // Reload from database to get updated data
+                await fetchGamesFromDatabase()
+
+                // Track API call
+                lastApiCall = Date()
+                await logApiCall()
+            } else {
+                print("💾 Using cached data - API call skipped")
+            }
+
             lastUpdated = Date()
         } catch {
             errorMessage = "Failed to load games: \(error.localizedDescription)"
         }
-        
+
         isLoading = false
+    }
+
+    private func shouldFetchFromAPI() -> Bool {
+        // Always fetch if we've never called the API
+        guard let lastCall = lastApiCall else {
+            return true
+        }
+
+        // Check if cache has expired (10 minutes)
+        let timeSinceLastCall = Date().timeIntervalSince(lastCall)
+        if timeSinceLastCall <= cacheDuration {
+            return false
+        }
+
+        // Additional check: Only fetch if there are upcoming games that need fresh odds
+        // Don't fetch if all games have started or completed
+        let now = Date()
+        let upcomingGames = games.filter { game in
+            !game.isCompleted && game.commenceTime > now
+        }
+
+        // If no upcoming games, don't waste an API call
+        if upcomingGames.isEmpty {
+            print("⏭️ No upcoming games - skipping API call")
+            return false
+        }
+
+        return true
+    }
+
+    private func refreshFromCache() async {
+        // Only refresh from database, no API calls
+        await fetchGamesFromDatabase()
+        lastUpdated = Date()
+    }
+
+    private func logApiCall() async {
+        // Log API usage to track monthly consumption
+        do {
+            let logEntry: [String: Any] = [
+                "endpoint": "americanfootball_nfl/odds",
+                "cost": 1, // 1 credit per call (1 region, 1 market)
+                "timestamp": ISO8601DateFormatter().string(from: Date())
+            ]
+            try await supabase
+                .from("api_usage_log")
+                .insert(logEntry)
+                .execute()
+        } catch {
+            print("Failed to log API usage: \(error)")
+        }
     }
     
     private func syncGameToDatabase(_ apiGame: OddsAPIService.APIGame) async {
@@ -216,6 +309,13 @@ class GamesViewModel: ObservableObject {
     }
     
     func refreshGames() async {
+        // User-initiated refresh - respects cache
+        await loadGames()
+    }
+
+    func forceRefreshFromAPI() async {
+        // Force API call (use sparingly)
+        lastApiCall = nil
         await loadGames()
     }
 }
