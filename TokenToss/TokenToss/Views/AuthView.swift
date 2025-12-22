@@ -9,7 +9,7 @@
 import SwiftUI
 
 struct AuthView: View {
-    @StateObject private var viewModel = AuthViewModel()
+    @EnvironmentObject var authVM: AuthViewModel
     @State private var isSignUp = false
     @State private var email = ""
     @State private var password = ""
@@ -53,7 +53,7 @@ struct AuthView: View {
                 .padding(.top, 20)
                 
                 // Error message
-                if let error = viewModel.errorMessage {
+                if let error = authVM.errorMessage {
                     Text(error)
                         .foregroundColor(.red)
                         .font(.caption)
@@ -67,7 +67,7 @@ struct AuthView: View {
                         print("🔵 [DEBUG] Task started, isSignUp: \(isSignUp)")
                         if isSignUp {
                             print("🔵 [DEBUG] Calling signUp...")
-                            await viewModel.signUp(
+                            await authVM.signUp(
                                 email: email,
                                 password: password,
                                 username: username
@@ -75,7 +75,7 @@ struct AuthView: View {
                             print("🔵 [DEBUG] signUp returned")
                         } else {
                             print("🔵 [DEBUG] Calling signIn...")
-                            await viewModel.signIn(
+                            await authVM.signIn(
                                 email: email,
                                 password: password
                             )
@@ -83,7 +83,7 @@ struct AuthView: View {
                         }
                     }
                 }) {
-                    if viewModel.isLoading {
+                    if authVM.isLoading {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                     } else {
@@ -97,7 +97,7 @@ struct AuthView: View {
                 .foregroundColor(.white)
                 .cornerRadius(10)
                 .padding(.horizontal)
-                .disabled(viewModel.isLoading || email.isEmpty || password.isEmpty || (isSignUp && username.isEmpty))
+                .disabled(authVM.isLoading || email.isEmpty || password.isEmpty || (isSignUp && username.isEmpty))
                 
                 // Toggle sign up / sign in
                 Button(action: {
@@ -109,7 +109,7 @@ struct AuthView: View {
                             "hypothesisId": "A",
                             "location": "AuthView.swift:100",
                             "message": "Toggle sign up/sign in button tapped",
-                            "data": ["isSignUp": isSignUp, "errorMessageExists": viewModel.errorMessage != nil],
+                            "data": ["isSignUp": isSignUp, "errorMessageExists": authVM.errorMessage != nil],
                             "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
                         ]
                         if let jsonData = try? JSONSerialization.data(withJSONObject: logData),
@@ -124,7 +124,7 @@ struct AuthView: View {
                     // #endregion
                     withAnimation {
                         isSignUp.toggle()
-                        viewModel.errorMessage = nil
+                        authVM.errorMessage = nil
                     }
                 }) {
                     Text(isSignUp ? "Already have an account? Sign In" : "Don't have an account? Sign Up")
