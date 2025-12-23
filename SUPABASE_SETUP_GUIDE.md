@@ -6,12 +6,21 @@ Complete step-by-step guide to set up your Supabase database for the friend-firs
 
 ## 📋 Prerequisites
 
-- Access to your Supabase project dashboard
-- Existing tables: `profiles`, `wallets`, `nfl_games`, `bets`, `odds`, `transactions`
+- Fresh Supabase project (or existing project - this guide works for both)
+- Access to your Supabase dashboard
+- SQL Editor access
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start for New Projects
+
+If you're starting from scratch, run **Migration 000** first to create base tables, then run migrations 001-004.
+
+If you have existing tables, skip Migration 000 and go straight to Migration 001.
+
+---
+
+## Quick Start
 
 ### Step 1: Open Supabase SQL Editor
 
@@ -22,7 +31,214 @@ Complete step-by-step guide to set up your Supabase database for the friend-firs
 
 ### Step 2: Run Migrations in Order
 
-**⚠️ IMPORTANT:** Run these in order (001 → 002 → 003 → 004)
+**⚠️ IMPORTANT:**
+- **New projects:** Run Migration 000 first, then 001 → 002 → 003 → 004
+- **Existing projects:** Skip 000, run 001 → 002 → 003 → 004
+
+---
+
+## Migration 000: Base Tables (New Projects Only)
+
+**⚠️ Skip this if you already have profiles, wallets, bets, nfl_games, odds, and transactions tables**
+
+**What this creates:**
+- `profiles` table (user profiles)
+- `wallets` table (token balances)
+- `nfl_games` table (NFL game data)
+- `bets` table (user bets)
+- `odds` table (betting odds)
+- `transactions` table (wallet transactions)
+- `api_usage_log` table (API quota tracking)
+
+**Copy this entire block and click RUN:**
+
+```sql
+-- Base Tables for TokenToss Betting App
+-- Migration 000: Core infrastructure (for new projects)
+
+-- ==================================================
+-- PROFILES TABLE
+-- ==================================================
+CREATE TABLE IF NOT EXISTS profiles (
+  id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+  username TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- RLS Policies for profiles
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view all profiles" ON profiles
+  FOR SELECT USING (true);
+
+CREATE POLICY "Users can insert their own profile" ON profiles
+  FOR INSERT WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Users can update their own profile" ON profiles
+  FOR UPDATE USING (auth.uid() = id);
+
+-- ==================================================
+-- WALLETS TABLE
+-- ==================================================
+CREATE TABLE IF NOT EXISTS wallets (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE UNIQUE NOT NULL,
+  balance BIGINT DEFAULT 1000 CHECK (balance >= 0),
+  lifetime_earned BIGINT DEFAULT 0,
+  lifetime_spent BIGINT DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_wallets_user_id ON wallets(user_id);
+
+-- RLS Policies for wallets
+ALTER TABLE wallets ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own wallet" ON wallets
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own wallet" ON wallets
+  FOR UPDATE USING (auth.uid() = user_id);
+
+-- ==================================================
+-- NFL GAMES TABLE
+-- ==================================================
+CREATE TABLE IF NOT EXISTS nfl_games (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  external_id TEXT UNIQUE NOT NULL,
+  home_team TEXT NOT NULL,
+  away_team TEXT NOT NULL,
+  commence_time TIMESTAMPTZ NOT NULL,
+  home_score INT,
+  away_score INT,
+  is_completed BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_games_commence_time ON nfl_games(commence_time);
+CREATE INDEX IF NOT EXISTS idx_games_external_id ON nfl_games(external_id);
+
+-- RLS Policies for nfl_games
+ALTER TABLE nfl_games ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Anyone can view games" ON nfl_games
+  FOR SELECT USING (true);
+
+-- ==================================================
+-- ODDS TABLE
+-- ==================================================
+CREATE TABLE IF NOT EXISTS odds (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  game_id UUID REFERENCES nfl_games(id) ON DELETE CASCADE NOT NULL,
+  home_moneyline INT,
+  away_moneyline INT,
+  captured_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_odds_game_id ON odds(game_id);
+
+-- RLS Policies for odds
+ALTER TABLE odds ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Anyone can view odds" ON odds
+  FOR SELECT USING (true);
+
+-- ==================================================
+-- BETS TABLE
+-- ==================================================
+CREATE TABLE IF NOT EXISTS bets (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  game_id UUID REFERENCES nfl_games(id) ON DELETE CASCADE NOT NULL,
+  bet_type TEXT NOT NULL,
+  team_bet_on TEXT NOT NULL,
+  wager_amount BIGINT NOT NULL CHECK (wager_amount > 0),
+  odds_at_bet INT NOT NULL,
+  potential_payout BIGINT NOT NULL,
+  bet_status TEXT DEFAULT 'pending' CHECK (bet_status IN ('pending', 'won', 'lost', 'cancelled')),
+  payout_amount BIGINT DEFAULT 0,
+  placed_at TIMESTAMPTZ DEFAULT NOW(),
+  settled_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_bets_user_id ON bets(user_id);
+CREATE INDEX IF NOT EXISTS idx_bets_game_id ON bets(game_id);
+CREATE INDEX IF NOT EXISTS idx_bets_status ON bets(bet_status);
+
+-- RLS Policies for bets
+ALTER TABLE bets ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own bets" ON bets
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own bets" ON bets
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- ==================================================
+-- TRANSACTIONS TABLE
+-- ==================================================
+CREATE TABLE IF NOT EXISTS transactions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  wallet_id UUID REFERENCES wallets(id) ON DELETE CASCADE NOT NULL,
+  transaction_type TEXT NOT NULL CHECK (transaction_type IN ('bet_placed', 'bet_won', 'bet_lost', 'allowance', 'adjustment')),
+  amount BIGINT NOT NULL,
+  balance_before BIGINT NOT NULL,
+  balance_after BIGINT NOT NULL,
+  bet_id UUID REFERENCES bets(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_wallet_id ON transactions(wallet_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_bet_id ON transactions(bet_id);
+
+-- RLS Policies for transactions
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own transactions" ON transactions
+  FOR SELECT USING (
+    wallet_id IN (SELECT id FROM wallets WHERE user_id = auth.uid())
+  );
+
+-- ==================================================
+-- API USAGE LOG TABLE
+-- ==================================================
+CREATE TABLE IF NOT EXISTS api_usage_log (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  endpoint TEXT NOT NULL,
+  cost INTEGER NOT NULL,
+  timestamp TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_usage_timestamp ON api_usage_log(timestamp DESC);
+
+-- ==================================================
+-- TRIGGER: Auto-create wallet on user signup
+-- ==================================================
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, username)
+  VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'username', NEW.email));
+
+  INSERT INTO public.wallets (user_id, balance)
+  VALUES (NEW.id, 1000);
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION handle_new_user();
+```
+
+**✅ Expected result:** "Success. No rows returned."
 
 ---
 
@@ -643,7 +859,18 @@ $$ LANGUAGE plpgsql STABLE;
 
 After running all migrations, verify everything is set up:
 
-### 1. Check Tables Exist
+### 1. Check Base Tables Exist (if you ran Migration 000)
+
+```sql
+SELECT table_name FROM information_schema.tables
+WHERE table_schema = 'public'
+AND table_name IN ('profiles', 'wallets', 'nfl_games', 'bets', 'odds', 'transactions', 'api_usage_log')
+ORDER BY table_name;
+```
+
+**Expected:** 7 rows
+
+### 2. Check Group Tables Exist
 
 ```sql
 SELECT table_name FROM information_schema.tables
@@ -654,7 +881,7 @@ ORDER BY table_name;
 
 **Expected:** 3 rows (groups, group_invitations, group_members)
 
-### 2. Check Functions Exist
+### 3. Check Functions Exist
 
 ```sql
 SELECT routine_name FROM information_schema.routines
@@ -665,7 +892,7 @@ ORDER BY routine_name;
 
 **Expected:** At least 8 functions
 
-### 3. Check Views Exist
+### 4. Check Views Exist
 
 ```sql
 SELECT table_name FROM information_schema.views
@@ -676,16 +903,43 @@ ORDER BY table_name;
 
 **Expected:** 3 views (group_leaderboard, group_members_detailed, groups_summary)
 
-### 4. Test Group Creation
+### 5. Test User Creation (New Projects Only)
+
+If you haven't created any users yet, you can test the trigger:
 
 ```sql
--- Replace YOUR_USER_ID with an actual user ID from auth.users
+-- Check if any users exist
+SELECT count(*) FROM auth.users;
+
+-- If 0 users, create one from your app's sign-up page first
+-- Then verify the profile and wallet were auto-created:
+SELECT p.id, p.username, w.balance
+FROM profiles p
+JOIN wallets w ON p.id = w.user_id
+LIMIT 1;
+```
+
+**Expected:** Shows user with 1000 token starting balance
+
+### 6. Test Group Creation
+
+After you have at least one user:
+
+```sql
+-- Get a user ID to use for testing
+SELECT id, username FROM profiles LIMIT 1;
+
+-- Use that ID in the INSERT below (replace the UUID)
 INSERT INTO groups (name, created_by, description)
-VALUES ('Test Group', 'YOUR_USER_ID', 'Testing group creation')
+VALUES (
+  'Test Group',
+  'PASTE_USER_ID_HERE',  -- Replace with actual UUID from above
+  'Testing group creation'
+)
 RETURNING id, name, member_limit, weekly_token_allowance;
 ```
 
-**Expected:** Returns new group details
+**Expected:** Returns new group details with default settings (15 member limit, 500 weekly allowance)
 
 ---
 
