@@ -17,47 +17,113 @@ struct AuthView: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 20) {
-                // Logo
-                Image(systemName: "dollarsign.circle.fill")
-                    .font(.system(size: 80))
-                    .foregroundColor(.green)
+            ZStack {
+                // Background gradient
+                LinearGradient(
+                    colors: [
+                        Color.tokenGold.opacity(0.1),
+                        Color.tokenBronze.opacity(0.05),
+                        Color.appBackground
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
                 
-                Text("BetBuddy")
-                    .font(.largeTitle)
-                    .bold()
-                
-                Text("Bet with friends using virtual tokens")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                ScrollView {
+                    VStack(spacing: 20) {
+                        Spacer()
+                            .frame(height: 40)
+                        
+                        // Logo with coin animation
+                        VStack(spacing: 20) {
+                            CoinTossIcon(size: 100)
+                            
+                            Text("Token Toss")
+                                .font(.system(size: 44, weight: .bold, design: .rounded))
+                                .foregroundStyle(LinearGradient.tokenGradient)
+                            
+                            Text("Toss tokens, win big!")
+                                .font(.title3)
+                                .fontWeight(.medium)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.bottom, 30)
                 
                 // Form fields
                 VStack(spacing: 16) {
                     if isSignUp {
-                        TextField("Username", text: $username)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .autocapitalization(.none)
-                            .disableAutocorrection(true)
+                        HStack {
+                            Image(systemName: "person.fill")
+                                .foregroundColor(.tokenGold)
+                                .frame(width: 24)
+                            TextField("Username", text: $username)
+                                .autocapitalization(.none)
+                                .disableAutocorrection(true)
+                        }
+                        .padding()
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color.cardBackground)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .strokeBorder(Color.tokenGold.opacity(0.3), lineWidth: 1)
+                                )
+                        )
                     }
                     
-                    TextField("Email", text: $email)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .autocapitalization(.none)
-                        .keyboardType(.emailAddress)
-                        .disableAutocorrection(true)
+                    HStack {
+                        Image(systemName: "envelope.fill")
+                            .foregroundColor(.tokenGold)
+                            .frame(width: 24)
+                        TextField("Email", text: $email)
+                            .autocapitalization(.none)
+                            .keyboardType(.emailAddress)
+                            .disableAutocorrection(true)
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.cardBackground)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .strokeBorder(Color.tokenGold.opacity(0.3), lineWidth: 1)
+                            )
+                    )
                     
-                    SecureField("Password", text: $password)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    HStack {
+                        Image(systemName: "lock.fill")
+                            .foregroundColor(.tokenGold)
+                            .frame(width: 24)
+                        SecureField("Password", text: $password)
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.cardBackground)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .strokeBorder(Color.tokenGold.opacity(0.3), lineWidth: 1)
+                            )
+                    )
                 }
                 .padding(.horizontal)
                 .padding(.top, 20)
                 
                 // Error message
                 if let error = authVM.errorMessage {
-                    Text(error)
-                        .foregroundColor(.red)
-                        .font(.caption)
-                        .padding(.horizontal)
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        Text(error)
+                    }
+                    .foregroundColor(.lossRed)
+                    .font(.caption)
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.lossRed.opacity(0.1))
+                    )
+                    .padding(.horizontal)
                 }
                 
                 // Action button
@@ -83,19 +149,25 @@ struct AuthView: View {
                         }
                     }
                 }) {
-                    if authVM.isLoading {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    } else {
-                        Text(isSignUp ? "Sign Up" : "Sign In")
-                            .fontWeight(.semibold)
+                    HStack(spacing: 12) {
+                        if authVM.isLoading {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        } else {
+                            TokenIcon(size: 24, color: .white.opacity(0.9))
+                            Text(isSignUp ? "Start Tossing" : "Sign In")
+                                .fontWeight(.bold)
+                        }
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(LinearGradient.tokenGradient)
+                            .shadow(color: Color.tokenGold.opacity(0.4), radius: 8, x: 0, y: 4)
+                    )
+                    .foregroundColor(.white)
                 }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.blue)
-                .foregroundColor(.white)
-                .cornerRadius(10)
                 .padding(.horizontal)
                 .disabled(authVM.isLoading || email.isEmpty || password.isEmpty || (isSignUp && username.isEmpty))
                 
@@ -127,20 +199,75 @@ struct AuthView: View {
                         authVM.errorMessage = nil
                     }
                 }) {
-                    Text(isSignUp ? "Already have an account? Sign In" : "Don't have an account? Sign Up")
+                    Text(isSignUp ? "Already have an account? Sign In" : "New tosser? Sign Up")
                         .font(.footnote)
-                        .foregroundColor(.blue)
+                        .foregroundColor(.tokenGold)
+                        .fontWeight(.medium)
                 }
                 .padding(.top, 10)
                 
                 if !isSignUp {
-                    Text("Sign up to get 1,000 free tokens!")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                        .padding(.top, 5)
+                    HStack(spacing: 6) {
+                        TokenIcon(size: 20, color: .winGreen)
+                        Text("Sign up to get 1,000 free tokens!")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.winGreen)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        Capsule()
+                            .fill(Color.winGreen.opacity(0.15))
+                    )
+                    .padding(.top, 5)
                 }
                 
+                // MARK: - Test Account Button (Development Only)
+                #if DEBUG
+                Divider()
+                    .padding(.vertical, 20)
+                
+                VStack(spacing: 8) {
+                    Text("⚡️ Quick Testing")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fontWeight(.semibold)
+                    
+                    Button(action: {
+                        Task {
+                            await authVM.useTestAccount()
+                        }
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "bolt.fill")
+                            Text("Use Test Account")
+                                .fontWeight(.semibold)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.tokenAccent.opacity(0.15))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .strokeBorder(Color.tokenAccent.opacity(0.3), lineWidth: 1.5)
+                            )
+                    )
+                    .foregroundColor(.tokenAccent)
+                    .padding(.horizontal)
+                    .disabled(authVM.isLoading)
+                    
+                    Text("admin@tokentoss.app / testing123")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                #endif
+                
                 Spacer()
+                    }
+                }
             }
             .navigationBarHidden(true)
         }

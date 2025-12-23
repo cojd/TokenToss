@@ -11,7 +11,7 @@ import Foundation
 class OddsAPIService {
     static let shared = OddsAPIService()
 
-    private let apiKey = "YOUR_ODDS_API_KEY" // TODO: Replace with your API key from the-odds-api.com
+    private let apiKey = "9ff40096658c08faa1c349c7f10ff9d8" // TODO: Replace with your API key from the-odds-api.com
     private let baseURL = "https://api.the-odds-api.com/v4"
     private let session = URLSession.shared
 
@@ -128,13 +128,5 @@ class OddsAPIService {
         }
 
         return try JSONDecoder().decode([APIGame].self, from: data)
-    }
-    
-    func convertToAmericanOdds(decimal: Double) -> Int {
-        if decimal >= 2.0 {
-            return Int((decimal - 1) * 100)
-        } else {
-            return Int(-100 / (decimal - 1))
-        }
     }
 }

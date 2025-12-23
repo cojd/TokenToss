@@ -428,4 +428,81 @@ class AuthViewModel: ObservableObject {
             print("Error fetching user: \(error)")
         }
     }
+    
+    // MARK: - Testing Utilities
+    
+    /// Creates or signs in to the default test account
+    /// Email: admin@tokentoss.app, Password: testing123, Username: admin
+    func useTestAccount() async {
+        print("🧪 Setting up test account...")
+        isLoading = true
+        errorMessage = nil
+        
+        let testEmail = "admin@tokentoss.app"
+        let testPassword = "testing123"
+        let testUsername = "admin"
+        
+        do {
+            // First, try to sign in (in case account already exists)
+            do {
+                try await supabase.auth.signIn(
+                    email: testEmail,
+                    password: testPassword
+                )
+                print("✅ Signed in to existing test account")
+                isAuthenticated = true
+                await fetchCurrentUser()
+                isLoading = false
+                return
+            } catch {
+                // Account doesn't exist, create it
+                print("📝 Test account doesn't exist, creating it...")
+            }
+            
+            // Create the test account
+            let response = try await supabase.auth.signUp(
+                email: testEmail,
+                password: testPassword
+            )
+            
+            let userId = response.user.id
+            
+            // Update profile with username
+            try await supabase
+                .from("profiles")
+                .update(["username": testUsername])
+                .eq("id", value: userId.uuidString)
+                .execute()
+            
+            print("✅ Test account created successfully")
+            
+            // Check for session and authenticate
+            do {
+                _ = try await supabase.auth.session
+                isAuthenticated = true
+                await fetchCurrentUser()
+            } catch {
+                // Session not available, but still authenticate
+                isAuthenticated = true
+                do {
+                    let user: User = try await supabase
+                        .from("profiles")
+                        .select()
+                        .eq("id", value: userId.uuidString)
+                        .single()
+                        .execute()
+                        .value
+                    self.currentUser = user
+                } catch {
+                    print("⚠️ Could not fetch user details, but account was created")
+                }
+            }
+            
+        } catch {
+            print("❌ Failed to set up test account: \(error.localizedDescription)")
+            errorMessage = "Failed to set up test account: \(error.localizedDescription)"
+        }
+        
+        isLoading = false
+    }
 }

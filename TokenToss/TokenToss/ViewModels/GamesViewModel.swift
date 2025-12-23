@@ -138,11 +138,18 @@ class GamesViewModel: ObservableObject {
     private func logApiCall() async {
         // Log API usage to track monthly consumption
         do {
-            let logEntry: [String: Any] = [
-                "endpoint": "americanfootball_nfl/odds",
-                "cost": 1, // 1 credit per call (1 region, 1 market)
-                "timestamp": ISO8601DateFormatter().string(from: Date())
-            ]
+            struct APIUsageLog: Encodable {
+                let endpoint: String
+                let cost: Int
+                let timestamp: String
+            }
+            
+            let logEntry = APIUsageLog(
+                endpoint: "americanfootball_nfl/odds",
+                cost: 1, // 1 credit per call (1 region, 1 market)
+                timestamp: ISO8601DateFormatter().string(from: Date())
+            )
+            
             try await supabase
                 .from("api_usage_log")
                 .insert(logEntry)
@@ -200,7 +207,7 @@ class GamesViewModel: ObservableObject {
                         "external_id": apiGame.id,
                         "home_team": apiGame.home_team,
                         "away_team": apiGame.away_team,
-                        "commence_time": String(commenceTime.timeIntervalSince1970)
+                        "commence_time": ISO8601DateFormatter().string(from: commenceTime)
                     ])
                     .select()
                     .single()
@@ -237,7 +244,8 @@ class GamesViewModel: ObservableObject {
             for bookmaker in apiGame.bookmakers {
                 for market in bookmaker.markets where market.key == "h2h" {
                     for outcome in market.outcomes {
-                        let americanOdds = oddsAPI.convertToAmericanOdds(decimal: outcome.price)
+                        // API already returns American odds, just convert to Int
+                        let americanOdds = Int(outcome.price)
                         
                         if outcome.name == apiGame.home_team {
                             if bestHomeOdds == nil || americanOdds > bestHomeOdds! {
@@ -277,10 +285,11 @@ class GamesViewModel: ObservableObject {
     private func fetchGamesFromDatabase() async {
         do {
             // Get upcoming games
+            let oneHourAgo = Date(timeIntervalSinceNow: -3600)
             let games: [NFLGame] = try await supabase
                 .from("nfl_games")
                 .select()
-                .gte("commence_time", value: String(Date().timeIntervalSince1970 - 3600)) // Include games from 1 hour ago
+                .gte("commence_time", value: ISO8601DateFormatter().string(from: oneHourAgo)) // Include games from 1 hour ago
                 .order("commence_time", ascending: true)
                 .limit(20)
                 .execute()
