@@ -432,24 +432,18 @@ $$ LANGUAGE plpgsql;
 -- VIEWS
 -- ==================================================
 
-CREATE OR REPLACE VIEW group_members_detailed AS
-SELECT
-  gm.group_id, gm.user_id, gm.joined_at, gm.display_name, gm.role, gm.is_active,
-  p.username,
-  w.balance as tokens,
-  (SELECT COUNT(*) FROM bets b WHERE b.user_id = gm.user_id AND b.group_id = gm.group_id) as total_bets,
-  (SELECT COUNT(*) FROM bets b WHERE b.user_id = gm.user_id AND b.group_id = gm.group_id AND b.bet_status = 'won') as bets_won,
-  (SELECT COUNT(*) FROM bets b WHERE b.user_id = gm.user_id AND b.group_id = gm.group_id AND b.bet_status = 'lost') as bets_lost
-FROM group_members gm
-JOIN profiles p ON gm.user_id = p.id
-LEFT JOIN wallets w ON gm.user_id = w.user_id
-WHERE gm.is_active = TRUE;
-
+-- View: Group summary with member count
 CREATE OR REPLACE VIEW groups_summary AS
-SELECT g.*, get_group_member_count(g.id) as member_count, p.username as creator_username
+SELECT
+  g.*,
+  get_group_member_count(g.id) as member_count,
+  p.username as creator_username
 FROM groups g
 LEFT JOIN profiles p ON g.created_by = p.id
 WHERE g.is_active = TRUE;
+
+-- Note: group_members_detailed view will be created in Migration 002
+-- (after group_id column is added to bets table)
 ```
 
 **✅ Expected result:** "Success. No rows returned."
@@ -629,6 +623,25 @@ LEFT JOIN wallets w ON gm.user_id = w.user_id
 LEFT JOIN bets b ON b.user_id = gm.user_id AND b.group_id = gm.group_id
 WHERE gm.is_active = TRUE
 GROUP BY gm.group_id, gm.user_id, p.username, gm.display_name, w.balance;
+
+-- View: Group member details with stats (moved from Migration 001)
+CREATE OR REPLACE VIEW group_members_detailed AS
+SELECT
+  gm.group_id,
+  gm.user_id,
+  gm.joined_at,
+  gm.display_name,
+  gm.role,
+  gm.is_active,
+  p.username,
+  w.balance as tokens,
+  (SELECT COUNT(*) FROM bets b WHERE b.user_id = gm.user_id AND b.group_id = gm.group_id) as total_bets,
+  (SELECT COUNT(*) FROM bets b WHERE b.user_id = gm.user_id AND b.group_id = gm.group_id AND b.bet_status = 'won') as bets_won,
+  (SELECT COUNT(*) FROM bets b WHERE b.user_id = gm.user_id AND b.group_id = gm.group_id AND b.bet_status = 'lost') as bets_lost
+FROM group_members gm
+JOIN profiles p ON gm.user_id = p.id
+LEFT JOIN wallets w ON gm.user_id = w.user_id
+WHERE gm.is_active = TRUE;
 ```
 
 **✅ Expected result:** "Success. No rows returned."
