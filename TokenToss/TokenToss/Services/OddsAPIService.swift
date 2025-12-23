@@ -43,6 +43,7 @@ class OddsAPIService {
     struct Outcome: Codable {
         let name: String
         let price: Double
+        let point: Double? // For spreads and totals
     }
     
     /// Fetches NFL games with odds from The Odds API
@@ -73,7 +74,7 @@ class OddsAPIService {
         components.queryItems = [
             URLQueryItem(name: "apiKey", value: apiKey),
             URLQueryItem(name: "regions", value: "us"),
-            URLQueryItem(name: "markets", value: "h2h"), // moneyline only for MVP
+            URLQueryItem(name: "markets", value: "h2h,spreads,totals"), // Friend-first: spread and totals
             URLQueryItem(name: "oddsFormat", value: "american")
         ]
         

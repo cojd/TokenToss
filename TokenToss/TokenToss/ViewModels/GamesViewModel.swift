@@ -146,7 +146,7 @@ class GamesViewModel: ObservableObject {
             
             let logEntry = APIUsageLog(
                 endpoint: "americanfootball_nfl/odds",
-                cost: 1, // 1 credit per call (1 region, 1 market)
+                cost: 3, // 3 credits per call (1 region, 3 markets: h2h, spreads, totals)
                 timestamp: ISO8601DateFormatter().string(from: Date())
             )
             
@@ -240,37 +240,114 @@ class GamesViewModel: ObservableObject {
             // Extract best odds from bookmakers
             var bestHomeOdds: Int?
             var bestAwayOdds: Int?
-            
+            var bestHomeSpread: Double?
+            var bestHomeSpreadOdds: Int?
+            var bestAwaySpread: Double?
+            var bestAwaySpreadOdds: Int?
+            var bestTotalOverLine: Double?
+            var bestTotalOverOdds: Int?
+            var bestTotalUnderLine: Double?
+            var bestTotalUnderOdds: Int?
+
             for bookmaker in apiGame.bookmakers {
-                for market in bookmaker.markets where market.key == "h2h" {
-                    for outcome in market.outcomes {
-                        // API already returns American odds, just convert to Int
-                        let americanOdds = Int(outcome.price)
-                        
-                        if outcome.name == apiGame.home_team {
-                            if bestHomeOdds == nil || americanOdds > bestHomeOdds! {
-                                bestHomeOdds = americanOdds
+                for market in bookmaker.markets {
+                    if market.key == "h2h" {
+                        // Moneyline odds
+                        for outcome in market.outcomes {
+                            let americanOdds = Int(outcome.price)
+
+                            if outcome.name == apiGame.home_team {
+                                if bestHomeOdds == nil || americanOdds > bestHomeOdds! {
+                                    bestHomeOdds = americanOdds
+                                }
+                            } else if outcome.name == apiGame.away_team {
+                                if bestAwayOdds == nil || americanOdds > bestAwayOdds! {
+                                    bestAwayOdds = americanOdds
+                                }
                             }
-                        } else if outcome.name == apiGame.away_team {
-                            if bestAwayOdds == nil || americanOdds > bestAwayOdds! {
-                                bestAwayOdds = americanOdds
+                        }
+                    } else if market.key == "spreads" {
+                        // Spread odds
+                        for outcome in market.outcomes {
+                            let americanOdds = Int(outcome.price)
+                            guard let point = outcome.point else { continue }
+
+                            if outcome.name == apiGame.home_team {
+                                if bestHomeSpread == nil || americanOdds > (bestHomeSpreadOdds ?? Int.min) {
+                                    bestHomeSpread = point
+                                    bestHomeSpreadOdds = americanOdds
+                                }
+                            } else if outcome.name == apiGame.away_team {
+                                if bestAwaySpread == nil || americanOdds > (bestAwaySpreadOdds ?? Int.min) {
+                                    bestAwaySpread = point
+                                    bestAwaySpreadOdds = americanOdds
+                                }
+                            }
+                        }
+                    } else if market.key == "totals" {
+                        // Total (over/under) odds
+                        for outcome in market.outcomes {
+                            let americanOdds = Int(outcome.price)
+                            guard let point = outcome.point else { continue }
+
+                            if outcome.name == "Over" {
+                                if bestTotalOverLine == nil || americanOdds > (bestTotalOverOdds ?? Int.min) {
+                                    bestTotalOverLine = point
+                                    bestTotalOverOdds = americanOdds
+                                }
+                            } else if outcome.name == "Under" {
+                                if bestTotalUnderLine == nil || americanOdds > (bestTotalUnderOdds ?? Int.min) {
+                                    bestTotalUnderLine = point
+                                    bestTotalUnderOdds = americanOdds
+                                }
                             }
                         }
                     }
                 }
             }
-            
-            // Insert odds snapshot
-            if bestHomeOdds != nil || bestAwayOdds != nil {
-                var oddsParams: [String: String] = [
-                    "game_id": gameId.uuidString
-                ]
-                if let homeOdds = bestHomeOdds {
-                    oddsParams["home_moneyline"] = String(homeOdds)
-                }
-                if let awayOdds = bestAwayOdds {
-                    oddsParams["away_moneyline"] = String(awayOdds)
-                }
+
+            // Insert odds snapshot with all market types
+            var oddsParams: [String: Any] = [
+                "game_id": gameId.uuidString
+            ]
+
+            // Moneyline
+            if let homeOdds = bestHomeOdds {
+                oddsParams["home_moneyline"] = homeOdds
+            }
+            if let awayOdds = bestAwayOdds {
+                oddsParams["away_moneyline"] = awayOdds
+            }
+
+            // Spreads
+            if let homeSpread = bestHomeSpread {
+                oddsParams["home_spread"] = homeSpread
+            }
+            if let homeSpreadOdds = bestHomeSpreadOdds {
+                oddsParams["home_spread_odds"] = homeSpreadOdds
+            }
+            if let awaySpread = bestAwaySpread {
+                oddsParams["away_spread"] = awaySpread
+            }
+            if let awaySpreadOdds = bestAwaySpreadOdds {
+                oddsParams["away_spread_odds"] = awaySpreadOdds
+            }
+
+            // Totals
+            if let overLine = bestTotalOverLine {
+                oddsParams["total_over_line"] = overLine
+            }
+            if let overOdds = bestTotalOverOdds {
+                oddsParams["total_over_odds"] = overOdds
+            }
+            if let underLine = bestTotalUnderLine {
+                oddsParams["total_under_line"] = underLine
+            }
+            if let underOdds = bestTotalUnderOdds {
+                oddsParams["total_under_odds"] = underOdds
+            }
+
+            if !oddsParams.isEmpty && oddsParams.count > 1 {
                 try await supabase
                     .from("odds")
                     .insert(oddsParams)
